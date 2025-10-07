@@ -26,6 +26,7 @@ PRESET_EXTENSIONS = [
     ['.java', '.kt'],
     ['.js', '.ts'],
     ['.json', '.yaml', '.yml'],
+    ['.py', '.yaml', '.yml'],
     ['.html', '.css', '.sh'],
     ['.c', '.cpp', '.cs'],
     ['.go', '.rb', '.php'],
