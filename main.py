@@ -33,24 +33,30 @@ PRESET_EXTENSIONS = [
     []  # Todas as extensões
 ]
 
-def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensions=None):
+def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensions=None, max_depth=0):
     if ignore_dirs is None:
         ignore_dirs = []
     ignore_dirs = [os.path.normpath(d) for d in ignore_dirs]
     if extensions is not None:
         extensions = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
 
+    base_depth = dir_path.rstrip(os.sep).count(os.sep)
     with open(output_path, 'w', encoding='utf-8') as outfile:
         for root, dirs, files in os.walk(dir_path):
+            current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
+            if max_depth > 0 and current_depth > max_depth:
+                # Remove subdirs to prevent deeper walk
+                dirs[:] = []
+                continue
             dirs[:] = [
                 d for d in dirs
                 if os.path.relpath(os.path.join(root, d), dir_path) not in ignore_dirs
                 and d not in ignore_dirs
             ]
             for file in files:
+                file_path = os.path.join(root, file)
                 if extensions and not any(file.endswith(ext) for ext in extensions):
                     continue
-                file_path = os.path.join(root, file)
                 if os.path.normpath(file_path) == os.path.normpath(output_path):
                     continue
                 try:
@@ -71,7 +77,7 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
                 outfile.write(content)
                 outfile.write('\n```\n\n')
 
-def process_subfolders(root_dir, ignore_dirs=None, extensions=None):
+def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0):
     for entry in os.scandir(root_dir):
         if entry.is_dir():
             subfolder = entry.name
@@ -82,12 +88,24 @@ def process_subfolders(root_dir, ignore_dirs=None, extensions=None):
                 subfolder_path,
                 output_path,
                 ignore_dirs=ignore_dirs,
-                extensions=extensions
+                extensions=extensions,
+                max_depth=max_depth
             )
+
+# \\wsl.localhost\Ubuntu_Zup\home\marcelo.gomes\stk-dev\stk-code-shift-content\actions
+def normalize_path(path):
+    if path.startswith(r'\\wsl.localhost') or path.startswith(r'//wsl.localhost/'):
+        parts = path.replace('\\', '/').replace('//', '/').split('/')
+        if len(parts) > 3:
+            distro = parts[2]
+            linux_path = '/' + '/'.join(parts[3:])
+            return linux_path
+    return path
 
 def menu():
     print("=== Merge de arquivos em Markdown ===")
     dir_path = input("Informe o diretório raiz: ").strip()
+    dir_path = normalize_path(dir_path)
     if not os.path.isdir(dir_path):
         print("Diretório inválido.")
         return
@@ -111,13 +129,20 @@ def menu():
         print("Opção inválida.")
         return
 
+    print("\nLimite de profundidade de busca (0 = todos os n��veis, 1 = apenas raiz, 2 = raiz + 1 nível, ...):")
+    try:
+        max_depth = int(input("Profundidade máxima: ").strip() or "0")
+    except Exception:
+        max_depth = 0
+
     ignore_dirs = ['.venv', '.git', '.idea', '__pycache__']
 
     if modo == '2':
         process_subfolders(
             dir_path,
             ignore_dirs=ignore_dirs,
-            extensions=extensions
+            extensions=extensions,
+            max_depth=max_depth
         )
     else:
         output_file = os.path.basename(os.path.normpath(dir_path)) + ".md"
@@ -126,7 +151,8 @@ def menu():
             dir_path,
             output_path,
             ignore_dirs=ignore_dirs,
-            extensions=extensions
+            extensions=extensions,
+            max_depth=max_depth
         )
     print("Processo concluído.")
 
