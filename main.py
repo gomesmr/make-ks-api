@@ -72,10 +72,45 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
 
                 ext = os.path.splitext(file)[1]
                 lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip('.'))
-                outfile.write(f'--- {file_path} ---\n')
+                outfile.write(f'## 📄 {file_path}\n\n')
                 outfile.write(f'```{lang}\n')
                 outfile.write(content)
                 outfile.write('\n```\n\n')
+
+def merge_files_from_list(file_list, output_path, base_dir=None):
+    with open(output_path, 'w', encoding='utf-8') as outfile:
+        for file_path in file_list:
+            file_path = file_path.strip()
+            if not file_path:
+                continue
+
+            file_path = normalize_path(file_path)
+
+            if base_dir and not os.path.isabs(file_path):
+                file_path = os.path.join(base_dir, file_path)
+
+            if not os.path.isfile(file_path):
+                print(f"Aviso: Arquivo não encontrado: {file_path}")
+                continue
+
+            try:
+                with open(file_path, 'r', encoding='utf-8') as infile:
+                    content = infile.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(file_path, 'r', encoding='latin-1') as infile:
+                        content = infile.read()
+                except Exception as e:
+                    print(f"Erro ao ler {file_path}: {e}")
+                    continue
+
+            ext = os.path.splitext(file_path)[1]
+            lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip('.'))
+            outfile.write(f'## 📄 {file_path}\n\n')
+            outfile.write(f'```{lang}\n')
+            outfile.write(content)
+            outfile.write('\n```\n\n')
+            print(f"Adicionado: {file_path}")
 
 def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0):
     for entry in os.scandir(root_dir):
@@ -102,58 +137,120 @@ def normalize_path(path):
             return linux_path
     return path
 
+def read_file_list_from_file(list_file_path):
+    try:
+        with open(list_file_path, 'r', encoding='utf-8') as f:
+            return [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"Erro ao ler arquivo de lista: {e}")
+        return []
+
 def menu():
     print("=== Merge de arquivos em Markdown ===")
-    dir_path = input("Informe o diretório raiz: ").strip()
-    dir_path = normalize_path(dir_path)
-    if not os.path.isdir(dir_path):
-        print("Diretório inválido.")
-        return
 
     print("\nComo deseja gerar os arquivos?")
     print("1 - Gerar um único arquivo para o diretório")
     print("2 - Gerar um arquivo para cada subpasta direta")
-    modo = input("Escolha (1 ou 2): ").strip()
+    print("3 - Gerar arquivo a partir de uma lista específica de arquivos")
+    modo = input("Escolha (1, 2 ou 3): ").strip()
 
-    print("\nEscolha o conjunto de extensões para incluir:")
-    for idx, preset in enumerate(PRESET_EXTENSIONS):
-        if preset:
-            print(f"{idx+1} - {', '.join(preset)}")
+    if modo == '3':
+        # Modo de lista de arquivos
+        print("\nComo deseja fornecer a lista de arquivos?")
+        print("1 - Digitar os caminhos manualmente (um por linha, linha vazia para finalizar)")
+        print("2 - Ler de um arquivo de texto")
+        list_mode = input("Escolha (1 ou 2): ").strip()
+
+        file_list = []
+        base_dir = None
+
+        if list_mode == '2':
+            list_file = input("Informe o caminho do arquivo com a lista: ").strip()
+            list_file = normalize_path(list_file)
+            file_list = read_file_list_from_file(list_file)
+            if not file_list:
+                print("Nenhum arquivo válido encontrado na lista.")
+                return
+
+            use_base = input("Os caminhos são relativos a algum diretório? (s/n): ").strip().lower()
+            if use_base == 's':
+                base_dir = input("Informe o diretório base: ").strip()
+                base_dir = normalize_path(base_dir)
         else:
-            print(f"{idx+1} - Todas as extensões")
-    ext_idx = input("Escolha (número): ").strip()
-    try:
-        ext_idx = int(ext_idx) - 1
-        extensions = PRESET_EXTENSIONS[ext_idx]
-    except Exception:
-        print("Opção inválida.")
-        return
+            print("\nDigite os caminhos dos arquivos (um por linha).")
+            print("Deixe uma linha em branco para finalizar:")
+            while True:
+                path = input().strip()
+                if not path:
+                    break
+                file_list.append(path)
 
-    print("\nLimite de profundidade de busca (0 = todos os n��veis, 1 = apenas raiz, 2 = raiz + 1 nível, ...):")
-    try:
-        max_depth = int(input("Profundidade máxima: ").strip() or "0")
-    except Exception:
-        max_depth = 0
+            if not file_list:
+                print("Nenhum arquivo informado.")
+                return
 
-    ignore_dirs = ['.venv', '.git', '.idea', '__pycache__']
+            use_base = input("\nOs caminhos são relativos a algum diretório? (s/n): ").strip().lower()
+            if use_base == 's':
+                base_dir = input("Informe o diretório base: ").strip()
+                base_dir = normalize_path(base_dir)
 
-    if modo == '2':
-        process_subfolders(
-            dir_path,
-            ignore_dirs=ignore_dirs,
-            extensions=extensions,
-            max_depth=max_depth
-        )
+        output_path = input("\nInforme o caminho do arquivo de saída (.md): ").strip()
+        output_path = normalize_path(output_path)
+
+        if not output_path.endswith('.md'):
+            output_path += '.md'
+
+        print(f"\nProcessando {len(file_list)} arquivo(s)...")
+        merge_files_from_list(file_list, output_path, base_dir)
+        print(f"Arquivo gerado: {output_path}")
+
     else:
-        output_file = os.path.basename(os.path.normpath(dir_path)) + ".md"
-        output_path = os.path.join(dir_path, output_file)
-        merge_files_from_directory(
-            dir_path,
-            output_path,
-            ignore_dirs=ignore_dirs,
-            extensions=extensions,
-            max_depth=max_depth
-        )
+        dir_path = input("Informe o diretório raiz: ").strip()
+        dir_path = normalize_path(dir_path)
+        if not os.path.isdir(dir_path):
+            print("Diretório inválido.")
+            return
+
+        print("\nEscolha o conjunto de extensões para incluir:")
+        for idx, preset in enumerate(PRESET_EXTENSIONS):
+            if preset:
+                print(f"{idx+1} - {', '.join(preset)}")
+            else:
+                print(f"{idx+1} - Todas as extensões")
+        ext_idx = input("Escolha (número): ").strip()
+        try:
+            ext_idx = int(ext_idx) - 1
+            extensions = PRESET_EXTENSIONS[ext_idx]
+        except Exception:
+            print("Opção inválida.")
+            return
+
+        print("\nLimite de profundidade de busca (0 = todos os níveis, 1 = apenas raiz, 2 = raiz + 1 nível, ...):")
+        try:
+            max_depth = int(input("Profundidade máxima: ").strip() or "0")
+        except Exception:
+            max_depth = 0
+
+        ignore_dirs = ['.venv', '.git', '.idea', '__pycache__']
+
+        if modo == '2':
+            process_subfolders(
+                dir_path,
+                ignore_dirs=ignore_dirs,
+                extensions=extensions,
+                max_depth=max_depth
+            )
+        else:
+            output_file = os.path.basename(os.path.normpath(dir_path)) + ".md"
+            output_path = os.path.join(dir_path, output_file)
+            merge_files_from_directory(
+                dir_path,
+                output_path,
+                ignore_dirs=ignore_dirs,
+                extensions=extensions,
+                max_depth=max_depth
+            )
+
     print("Processo concluído.")
 
 if __name__ == '__main__':
