@@ -35,7 +35,7 @@ PRESET_EXTENSIONS = [
 ]
 
 EXCLUDED_FILES = [
-    'secrets.json', '.env', '.env.local', 'credentials.json', 'config.secret.json'
+    'secrets.json', '.env', '.env.local', 'credentials.json', 'config.secret.json', '_kslist.md'
 ]
 
 
@@ -63,10 +63,7 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
             if 0 < max_depth < current_depth:
                 dirs[:] = []
                 continue
-            dirs[:] = [
-                d for d in dirs
-                if os.path.relpath(os.path.join(root, d), dir_path) not in ignore_dirs and d not in ignore_dirs
-            ]
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
             for file in files:
                 file_path = os.path.join(root, file)
                 if is_excluded_file(file_path):
@@ -141,8 +138,10 @@ def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=Fals
 
 def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0, paths_only=False):
     kslist_dir = ensure_kslist_dir(root_dir)
+    if ignore_dirs is None:
+        ignore_dirs = []
     for entry in os.scandir(root_dir):
-        if entry.is_dir():
+        if entry.is_dir() and entry.name not in ignore_dirs:
             subfolder = entry.name
             subfolder_path = os.path.join(root_dir, subfolder)
             output_path = os.path.join(kslist_dir, f"{subfolder}.md")
@@ -392,7 +391,7 @@ def menu():
         except Exception:
             max_depth = 0
 
-        ignore_dirs = ['.venv', '.git', '.idea', '__pycache__', 'assets', 'docs']
+        ignore_dirs = ['.venv', '.git', '.idea', '__pycache__', 'assets', 'docs', '_kslist']
 
         config_data.update({
             'dir_path': dir_path,
