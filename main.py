@@ -50,29 +50,78 @@ def is_excluded_file(file_path):
     return filename in EXCLUDED_FILES
 
 
+def should_ignore_dir(dir_path, ignore_dirs):
+    """
+    Verifica se um diretório deve ser ignorado.
+    Compara tanto o nome do diretório quanto o caminho completo.
+    """
+    dir_name = os.path.basename(dir_path)
+    normalized_path = os.path.normpath(dir_path)
+
+    for ignore_pattern in ignore_dirs:
+        ignore_pattern = os.path.normpath(ignore_pattern)
+
+        # Verifica se é o nome do diretório
+        if dir_name == ignore_pattern or dir_name == os.path.basename(ignore_pattern):
+            return True
+
+        # Verifica se o caminho completo contém o padrão
+        if ignore_pattern in normalized_path:
+            return True
+
+        # Verifica se termina com o padrão (para caminhos relativos)
+        if normalized_path.endswith(ignore_pattern):
+            return True
+
+    return False
+
+
 def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensions=None, max_depth=0, paths_only=False):
     if ignore_dirs is None:
         ignore_dirs = []
+
+    # Normaliza os diretórios a ignorar
     ignore_dirs = [os.path.normpath(d) for d in ignore_dirs]
+
     if extensions is not None:
         extensions = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
+
     base_depth = dir_path.rstrip(os.sep).count(os.sep)
+
     with open(output_path, 'w', encoding='utf-8') as outfile:
         for root, dirs, files in os.walk(dir_path):
             current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
+
+            # Verifica profundidade máxima
             if 0 < max_depth < current_depth:
                 dirs[:] = []
                 continue
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+            # CORREÇÃO: Filtra diretórios usando a nova função
+            dirs_to_remove = []
+            for d in dirs:
+                full_dir_path = os.path.join(root, d)
+                if should_ignore_dir(full_dir_path, ignore_dirs):
+                    dirs_to_remove.append(d)
+                    print(f"🚫 Diretório ignorado: {full_dir_path}")
+
+            # Remove os diretórios ignorados da lista
+            for d in dirs_to_remove:
+                dirs.remove(d)
+
             for file in files:
                 file_path = os.path.join(root, file)
+
                 if is_excluded_file(file_path):
                     print(f"🔒 Arquivo excluído (sensível): {file_path}")
                     continue
+
                 if extensions and not any(file.endswith(ext) for ext in extensions):
                     continue
+
                 if os.path.normpath(file_path) == os.path.normpath(output_path):
                     continue
+
                 if paths_only:
                     outfile.write(f'{file_path}\n')
                 else:
@@ -140,8 +189,14 @@ def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0,
     kslist_dir = ensure_kslist_dir(root_dir)
     if ignore_dirs is None:
         ignore_dirs = []
+
     for entry in os.scandir(root_dir):
-        if entry.is_dir() and entry.name not in ignore_dirs:
+        if entry.is_dir():
+            # CORREÇÃO: Verifica se a pasta deve ser ignorada
+            if should_ignore_dir(entry.path, ignore_dirs):
+                print(f"🚫 Subpasta ignorada: {entry.path}")
+                continue
+
             subfolder = entry.name
             subfolder_path = os.path.join(root_dir, subfolder)
             output_path = os.path.join(kslist_dir, f"{subfolder}.md")
