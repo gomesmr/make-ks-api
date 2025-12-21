@@ -31,7 +31,7 @@ PRESET_EXTENSIONS = [
     ['.html', '.css', '.sh'],
     ['.c', '.cpp', '.cs'],
     ['.go', '.rb', '.php'],
-    []  # Todas as extensões
+    []
 ]
 
 EXCLUDED_FILES = [
@@ -51,25 +51,18 @@ def is_excluded_file(file_path):
 
 
 def should_ignore_dir(dir_path, ignore_dirs):
-    """
-    Verifica se um diretório deve ser ignorado.
-    Compara tanto o nome do diretório quanto o caminho completo.
-    """
     dir_name = os.path.basename(dir_path)
     normalized_path = os.path.normpath(dir_path)
 
     for ignore_pattern in ignore_dirs:
         ignore_pattern = os.path.normpath(ignore_pattern)
 
-        # Verifica se é o nome do diretório
         if dir_name == ignore_pattern or dir_name == os.path.basename(ignore_pattern):
             return True
 
-        # Verifica se o caminho completo contém o padrão
         if ignore_pattern in normalized_path:
             return True
 
-        # Verifica se termina com o padrão (para caminhos relativos)
         if normalized_path.endswith(ignore_pattern):
             return True
 
@@ -80,7 +73,6 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
     if ignore_dirs is None:
         ignore_dirs = []
 
-    # Normaliza os diretórios a ignorar
     ignore_dirs = [os.path.normpath(d) for d in ignore_dirs]
 
     if extensions is not None:
@@ -92,12 +84,10 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
         for root, dirs, files in os.walk(dir_path):
             current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
 
-            # Verifica profundidade máxima
             if 0 < max_depth < current_depth:
                 dirs[:] = []
                 continue
 
-            # CORREÇÃO: Filtra diretórios usando a nova função
             dirs_to_remove = []
             for d in dirs:
                 full_dir_path = os.path.join(root, d)
@@ -105,7 +95,6 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
                     dirs_to_remove.append(d)
                     print(f"🚫 Diretório ignorado: {full_dir_path}")
 
-            # Remove os diretórios ignorados da lista
             for d in dirs_to_remove:
                 dirs.remove(d)
 
@@ -192,7 +181,6 @@ def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0,
 
     for entry in os.scandir(root_dir):
         if entry.is_dir():
-            # CORREÇÃO: Verifica se a pasta deve ser ignorada
             if should_ignore_dir(entry.path, ignore_dirs):
                 print(f"🚫 Subpasta ignorada: {entry.path}")
                 continue
@@ -228,6 +216,77 @@ def read_file_list_from_file(list_file_path):
     except Exception as e:
         print(f"Erro ao ler arquivo de lista: {e}")
         return []
+
+
+def extract_directory_levels(file_list):
+    """
+    Extrai os níveis de diretório únicos de uma lista de arquivos.
+    Retorna uma lista de diretórios ordenados por profundidade.
+    """
+    directories = set()
+
+    for file_path in file_list:
+        file_path = normalize_path(file_path.strip())
+        if not file_path:
+            continue
+
+        # Pega o diretório do arquivo
+        dir_path = os.path.dirname(file_path)
+
+        # Adiciona todos os níveis de diretório
+        parts = dir_path.split(os.sep)
+        for i in range(1, len(parts) + 1):
+            level_path = os.sep.join(parts[:i])
+            if level_path:
+                directories.add(level_path)
+
+    # Ordena por profundidade (número de separadores)
+    sorted_dirs = sorted(directories, key=lambda x: x.count(os.sep))
+
+    return sorted_dirs
+
+
+def select_output_directory(file_list):
+    """
+    Permite ao usuário selecionar o diretório de saída a partir dos níveis
+    de profundidade dos arquivos da lista.
+    """
+    dir_levels = extract_directory_levels(file_list)
+
+    if not dir_levels:
+        print("⚠️ Não foi possível extrair diretórios da lista de arquivos.")
+        return os.getcwd()
+
+    print("\n📁 Selecione o diretório onde salvar o arquivo:")
+    for idx, dir_path in enumerate(dir_levels, 1):
+        print(f"{idx} - {dir_path}")
+
+    print(f"{len(dir_levels) + 1} - Outro diretório (digitar manualmente)")
+
+    while True:
+        try:
+            choice = input("\nEscolha uma opção: ").strip()
+            choice_num = int(choice)
+
+            if 1 <= choice_num <= len(dir_levels):
+                selected_dir = dir_levels[choice_num - 1]
+                print(f"✅ Diretório selecionado: {selected_dir}")
+                return selected_dir
+            elif choice_num == len(dir_levels) + 1:
+                custom_dir = input("Informe o diretório: ").strip()
+                custom_dir = normalize_path(custom_dir)
+                if os.path.isdir(custom_dir):
+                    print(f"✅ Diretório selecionado: {custom_dir}")
+                    return custom_dir
+                else:
+                    print("❌ Diretório inválido. Tente novamente.")
+            else:
+                print("❌ Opção inválida. Tente novamente.")
+        except ValueError:
+            print("❌ Por favor, digite um número válido.")
+        except KeyboardInterrupt:
+            print("\n\n❌ Operação cancelada.")
+            return None
 
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".merge_files_configs")
@@ -272,7 +331,6 @@ def execute_from_config(config_data):
         file_list = config_data.get('file_list', [])
         base_dir = config_data.get('base_dir')
         output_path = config_data.get('output_path')
-        # Garante que está na pasta _kslist
         kslist_dir = ensure_kslist_dir(os.path.dirname(output_path))
         output_filename = os.path.basename(output_path)
         output_path = os.path.join(kslist_dir, output_filename)
@@ -399,11 +457,11 @@ def menu():
         if not output_filename.endswith('.md'):
             output_filename += '.md'
 
-        base_output_dir = input(
-            "Informe o diretório onde salvar (deixe em branco para usar o diretório atual): ").strip()
-        if not base_output_dir:
-            base_output_dir = os.getcwd()
-        base_output_dir = normalize_path(base_output_dir)
+        # NOVA FUNCIONALIDADE: Seleção de diretório baseada nos arquivos da lista
+        base_output_dir = select_output_directory(file_list)
+
+        if base_output_dir is None:
+            return
 
         kslist_dir = ensure_kslist_dir(base_output_dir)
         output_path = os.path.join(kslist_dir, output_filename)
@@ -416,7 +474,7 @@ def menu():
 
         print(f"\nProcessando {len(file_list)} arquivo(s)...")
         merge_files_from_list(file_list, output_path, base_dir, paths_only=paths_only)
-        print(f"Arquivo gerado: {output_path}")
+        print(f"✅ Arquivo gerado: {output_path}")
 
     else:
         dir_path = input("Informe o diretório raiz: ").strip()
@@ -478,14 +536,13 @@ def menu():
                 paths_only=paths_only
             )
 
-        # Perguntar se deseja salvar a configuração
         save_choice = input("\n💾 Deseja salvar esta configuração para uso futuro? (s/n): ").strip().lower()
         if save_choice == 's':
             config_name = input("Nome para esta configuração: ").strip()
             if config_name:
                 save_config(config_name, config_data)
 
-    print("Processo concluído.")
+    print("✅ Processo concluído.")
 
 
 if __name__ == '__main__':
