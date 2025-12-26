@@ -1,0 +1,18 @@
+```yaml
+openapi: 3.0.0
+info:
+  title: API de Manipulação de Arquivos
+  description: Esta aplicação não expõe endpoints HTTP. Toda a lógica está restrita à execução local para manipulação de arquivos e diretórios.
+  version: 1.0.0
+  servers:
+    - url: http://api.example.dev.com/v1
+      description: Ambiente de dev
+    - url: http://api.example.hom.com/v1
+      description: Ambiente de homol
+    - url: http://api.example.prod.com/v1
+      description: Ambiente de Prod
+paths: {}
+components:
+  schemas: {}
+  securitySchemes: {}
+```
