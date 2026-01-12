@@ -80,81 +80,44 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
 
     base_depth = dir_path.rstrip(os.sep).count(os.sep)
 
-    with open(output_path, 'w', encoding='utf-8') as outfile:
-        for root, dirs, files in os.walk(dir_path):
-            current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
+    processed_files = []
+    file_contents = []
 
-            if 0 < max_depth < current_depth:
-                dirs[:] = []
-                continue
+    for root, dirs, files in os.walk(dir_path):
+        current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
 
-            dirs_to_remove = []
-            for d in dirs:
-                full_dir_path = os.path.join(root, d)
-                if should_ignore_dir(full_dir_path, ignore_dirs):
-                    dirs_to_remove.append(d)
-                    print(f"🚫 Diretório ignorado: {full_dir_path}")
+        # 🔧 CORREÇÃO: Mudança na lógica de profundidade
+        # Se max_depth > 0 e current_depth >= max_depth, para de descer
+        if max_depth > 0 and current_depth >= max_depth:
+            dirs[:] = []
+            continue
 
-            for d in dirs_to_remove:
-                dirs.remove(d)
+        dirs_to_remove = []
+        for d in dirs:
+            full_dir_path = os.path.join(root, d)
+            if should_ignore_dir(full_dir_path, ignore_dirs):
+                dirs_to_remove.append(d)
+                print(f"🚫 Diretório ignorado: {full_dir_path}")
 
-            for file in files:
-                file_path = os.path.join(root, file)
+        for d in dirs_to_remove:
+            dirs.remove(d)
 
-                if is_excluded_file(file_path):
-                    print(f"🔒 Arquivo excluído (sensível): {file_path}")
-                    continue
+        for file in files:
+            file_path = os.path.join(root, file)
 
-                if extensions and not any(file.endswith(ext) for ext in extensions):
-                    continue
-
-                if os.path.normpath(file_path) == os.path.normpath(output_path):
-                    continue
-
-                if paths_only:
-                    outfile.write(f'{file_path}\n')
-                else:
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as infile:
-                            content = infile.read()
-                    except UnicodeDecodeError:
-                        try:
-                            with open(file_path, 'r', encoding='latin-1') as infile:
-                                content = infile.read()
-                        except Exception as e:
-                            print(f"Erro ao ler {file_path}: {e}")
-                            continue
-                    write_file(content, file, file_path, outfile)
-
-
-def write_file(content, file, file_path, outfile):
-    ext = os.path.splitext(file)[1]
-    lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip('.'))
-    outfile.write(f'## 📄 {file_path}\n\n')
-    outfile.write(f'```{lang}\n')
-    outfile.write(content)
-    outfile.write('\n```\n\n')
-
-
-def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=False):
-    with open(output_path, 'w', encoding='utf-8') as outfile:
-        for file_path in file_list:
-            file_path = file_path.strip()
-            if not file_path:
-                continue
-            file_path = normalize_path(file_path)
-            if base_dir and not os.path.isabs(file_path):
-                file_path = os.path.join(base_dir, file_path)
             if is_excluded_file(file_path):
                 print(f"🔒 Arquivo excluído (sensível): {file_path}")
                 continue
-            if not os.path.isfile(file_path):
-                print(f"⚠️ Aviso: Arquivo não encontrado: {file_path}")
+
+            if extensions and not any(file.endswith(ext) for ext in extensions):
                 continue
-            if paths_only:
-                outfile.write(f'{file_path}\n')
-                print(f"✅ Path adicionado: {file_path}")
-            else:
+
+            if os.path.normpath(file_path) == os.path.normpath(output_path):
+                continue
+
+            processed_files.append(file_path)
+
+            if not paths_only:
                 try:
                     with open(file_path, 'r', encoding='utf-8') as infile:
                         content = infile.read()
@@ -163,15 +126,100 @@ def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=Fals
                         with open(file_path, 'r', encoding='latin-1') as infile:
                             content = infile.read()
                     except Exception as e:
-                        print(f"❌ Erro ao ler {file_path}: {e}")
+                        print(f"Erro ao ler {file_path}: {e}")
                         continue
-                ext = os.path.splitext(file_path)[1]
+
+                ext = os.path.splitext(file)[1]
                 lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip('.'))
-                outfile.write(f'## 📄 {file_path}\n\n')
-                outfile.write(f'```{lang}\n')
-                outfile.write(content)
+                file_contents.append({
+                    'path': file_path,
+                    'content': content,
+                    'lang': lang
+                })
+
+    with open(output_path, 'w', encoding='utf-8') as outfile:
+        outfile.write("# 📋 Índice de Arquivos\n\n")
+        outfile.write(f"**Total de arquivos processados:** {len(processed_files)}\n\n")
+
+        for idx, file_path in enumerate(processed_files, 1):
+            outfile.write(f"{idx}. `{file_path}`\n")
+
+        outfile.write("\n---\n\n")
+        outfile.write("# 📦 Conteúdo dos Arquivos\n\n")
+
+        if paths_only:
+            for file_path in processed_files:
+                outfile.write(f'{file_path}\n')
+        else:
+            for file_data in file_contents:
+                outfile.write(f'## 📄 {file_data["path"]}\n\n')
+                outfile.write(f'```{file_data["lang"]}\n')
+                outfile.write(file_data['content'])
                 outfile.write('\n```\n\n')
-                print(f"✅ Conteúdo adicionado: {file_path}")
+
+
+def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=False):
+    processed_files = []
+    file_contents = []
+
+    for file_path in file_list:
+        file_path = file_path.strip()
+        if not file_path:
+            continue
+        file_path = normalize_path(file_path)
+        if base_dir and not os.path.isabs(file_path):
+            file_path = os.path.join(base_dir, file_path)
+        if is_excluded_file(file_path):
+            print(f"🔒 Arquivo excluído (sensível): {file_path}")
+            continue
+        if not os.path.isfile(file_path):
+            print(f"⚠️ Aviso: Arquivo não encontrado: {file_path}")
+            continue
+
+        processed_files.append(file_path)
+
+        if not paths_only:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as infile:
+                    content = infile.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(file_path, 'r', encoding='latin-1') as infile:
+                        content = infile.read()
+                except Exception as e:
+                    print(f"❌ Erro ao ler {file_path}: {e}")
+                    continue
+
+            ext = os.path.splitext(file_path)[1]
+            lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip('.'))
+            file_contents.append({
+                'path': file_path,
+                'content': content,
+                'lang': lang
+            })
+            print(f"✅ Conteúdo coletado: {file_path}")
+
+    with open(output_path, 'w', encoding='utf-8') as outfile:
+        outfile.write("# 📋 Índice de Arquivos\n\n")
+        outfile.write(f"**Total de arquivos processados:** {len(processed_files)}\n\n")
+
+        for idx, file_path in enumerate(processed_files, 1):
+            outfile.write(f"{idx}. `{file_path}`\n")
+
+        outfile.write("\n---\n\n")
+        outfile.write("# 📦 Conteúdo dos Arquivos\n\n")
+
+        if paths_only:
+            for file_path in processed_files:
+                outfile.write(f'{file_path}\n')
+                print(f"✅ Path adicionado: {file_path}")
+        else:
+            for file_data in file_contents:
+                outfile.write(f'## 📄 {file_data["path"]}\n\n')
+                outfile.write(f'```{file_data["lang"]}\n')
+                outfile.write(file_data['content'])
+                outfile.write('\n```\n\n')
+                print(f"✅ Conteúdo adicionado: {file_data['path']}")
 
 
 def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0, paths_only=False):
@@ -401,8 +449,28 @@ def menu():
             print("❌ Nenhuma configuração salva encontrada.")
         else:
             print("\n📋 Configurações salvas:")
-            for config in configs:
-                print(f" • {config}")
+            for idx, config in enumerate(configs, 1):
+                print(f"{idx} - {config}")
+
+            print("\n💡 Deseja executar alguma configuração?")
+            choice = input("Digite o número da configuração ou pressione Enter para voltar: ").strip()
+
+            if choice:
+                try:
+                    if choice.isdigit():
+                        config_idx = int(choice) - 1
+                        if 0 <= config_idx < len(configs):
+                            config_name = configs[config_idx]
+                            config_data = load_config(config_name)
+                            if config_data:
+                                print(f"\n🚀 Executando configuração '{config_name}'...")
+                                execute_from_config(config_data)
+                        else:
+                            print("❌ Número inválido.")
+                    else:
+                        print("❌ Por favor, digite um número válido.")
+                except (IndexError, ValueError):
+                    print("❌ Opção inválida.")
         return
 
     print("\nComo deseja gerar os arquivos?")
