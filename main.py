@@ -86,12 +86,6 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
     for root, dirs, files in os.walk(dir_path):
         current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
 
-        # 🔧 CORREÇÃO: Mudança na lógica de profundidade
-        # Se max_depth > 0 e current_depth >= max_depth, para de descer
-        if max_depth > 0 and current_depth >= max_depth:
-            dirs[:] = []
-            continue
-
         dirs_to_remove = []
         for d in dirs:
             full_dir_path = os.path.join(root, d)
@@ -102,6 +96,11 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
         for d in dirs_to_remove:
             dirs.remove(d)
 
+        # Verifica profundidade DEPOIS de limpar diretórios ignorados
+        if 0 < max_depth <= current_depth:
+            dirs[:] = []  # Não desce mais níveis
+
+        # Processa arquivos do diretório atual
         for file in files:
             file_path = os.path.join(root, file)
 
@@ -222,11 +221,107 @@ def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=Fals
                 print(f"✅ Conteúdo adicionado: {file_data['path']}")
 
 
+def process_root_files(root_dir, kslist_dir, ignore_dirs=None, extensions=None, paths_only=False):
+    """
+    Processa apenas os arquivos que estão diretamente na raiz do diretório,
+    gerando um arquivo root.md
+    """
+    if ignore_dirs is None:
+        ignore_dirs = []
+
+    if extensions is not None:
+        extensions = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
+
+    processed_files = []
+    file_contents = []
+
+    # Lista apenas os arquivos da raiz (não recursivo)
+    try:
+        entries = os.listdir(root_dir)
+    except Exception as e:
+        print(f"❌ Erro ao listar diretório {root_dir}: {e}")
+        return
+
+    for entry in entries:
+        entry_path = os.path.join(root_dir, entry)
+
+        # Ignora diretórios
+        if os.path.isdir(entry_path):
+            continue
+
+        # Ignora arquivos excluídos
+        if is_excluded_file(entry_path):
+            print(f"🔒 Arquivo excluído (sensível): {entry_path}")
+            continue
+
+        # Filtra por extensão
+        if extensions and not any(entry.endswith(ext) for ext in extensions):
+            continue
+
+        processed_files.append(entry_path)
+
+        if not paths_only:
+            try:
+                with open(entry_path, 'r', encoding='utf-8') as infile:
+                    content = infile.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(entry_path, 'r', encoding='latin-1') as infile:
+                        content = infile.read()
+                except Exception as e:
+                    print(f"❌ Erro ao ler {entry_path}: {e}")
+                    continue
+
+            ext = os.path.splitext(entry)[1]
+            lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip('.'))
+            file_contents.append({
+                'path': entry_path,
+                'content': content,
+                'lang': lang
+            })
+
+    # Se não houver arquivos na raiz, não cria o arquivo
+    if not processed_files:
+        print("ℹ️ Nenhum arquivo encontrado na raiz do diretório.")
+        return
+
+    # Gera o arquivo root.md
+    output_path = os.path.join(kslist_dir, "root.md")
+
+    with open(output_path, 'w', encoding='utf-8') as outfile:
+        outfile.write("# 📋 Índice de Arquivos da Raiz\n\n")
+        outfile.write(f"**Total de arquivos processados:** {len(processed_files)}\n\n")
+
+        for idx, file_path in enumerate(processed_files, 1):
+            outfile.write(f"{idx}. `{file_path}`\n")
+
+        outfile.write("\n---\n\n")
+        outfile.write("# 📦 Conteúdo dos Arquivos\n\n")
+
+        if paths_only:
+            for file_path in processed_files:
+                outfile.write(f'{file_path}\n')
+        else:
+            for file_data in file_contents:
+                outfile.write(f'## 📄 {file_data["path"]}\n\n')
+                outfile.write(f'```{file_data["lang"]}\n')
+                outfile.write(file_data['content'])
+                outfile.write('\n```\n\n')
+
+    print(f"✅ Arquivo root.md gerado: {output_path}")
+
+
 def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0, paths_only=False):
     kslist_dir = ensure_kslist_dir(root_dir)
     if ignore_dirs is None:
         ignore_dirs = []
 
+    # ✅ NOVO: Processa arquivos da raiz primeiro
+    print(f"\n📁 Processando arquivos da raiz de {root_dir}...")
+    process_root_files(root_dir, kslist_dir, ignore_dirs, extensions, paths_only)
+
+    # Processa subpastas
+    print(f"\n📁 Processando subpastas de {root_dir}...")
     for entry in os.scandir(root_dir):
         if entry.is_dir():
             if should_ignore_dir(entry.path, ignore_dirs):
@@ -525,7 +620,6 @@ def menu():
         if not output_filename.endswith('.md'):
             output_filename += '.md'
 
-        # NOVA FUNCIONALIDADE: Seleção de diretório baseada nos arquivos da lista
         base_output_dir = select_output_directory(file_list)
 
         if base_output_dir is None:
@@ -572,7 +666,7 @@ def menu():
         except Exception:
             max_depth = 0
 
-        ignore_dirs = ['.venv', '.git', '.idea', '__pycache__', 'assets', 'docs', '_kslist']
+        ignore_dirs = ['.venv', '.git', '.idea', '__pycache__', 'assets', '_kslist']
 
         config_data.update({
             'dir_path': dir_path,
