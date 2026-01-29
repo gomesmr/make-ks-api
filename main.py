@@ -38,6 +38,46 @@ EXCLUDED_FILES = [
     'secrets.json', '.env', '.env.local', 'credentials.json', 'config.secret.json', '_kslist.md'
 ]
 
+# ✅ NOVO: Configuração de prefixo de path a ser removido
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".merge_files_configs")
+os.makedirs(CONFIG_DIR, exist_ok=True)
+PATH_PREFIX_CONFIG = os.path.join(CONFIG_DIR, "path_prefix.json")
+
+
+def get_path_prefix():
+    """Obtém o prefixo de path configurado ou detecta automaticamente"""
+    try:
+        with open(PATH_PREFIX_CONFIG, 'r') as f:
+            config = json.load(f)
+            return config.get('prefix', '')
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Tenta detectar automaticamente baseado no home do usuário
+        home = os.path.expanduser("~")
+        # Procura por padrões comuns como ~/stk-dev/, ~/projects/, etc.
+        common_patterns = ['stk-dev', 'projects', 'workspace', 'dev', 'code']
+        for pattern in common_patterns:
+            potential_prefix = os.path.join(home, pattern)
+            if os.path.isdir(potential_prefix):
+                return potential_prefix + os.sep
+        return ''
+
+
+def set_path_prefix(prefix):
+    """Define o prefixo de path a ser removido"""
+    with open(PATH_PREFIX_CONFIG, 'w') as f:
+        json.dump({'prefix': prefix}, f, indent=2)
+    print(f"✅ Prefixo de path configurado: {prefix}")
+
+
+def remove_path_prefix(path, prefix=None):
+    """Remove o prefixo configurado do path"""
+    if prefix is None:
+        prefix = get_path_prefix()
+
+    if prefix and path.startswith(prefix):
+        return path[len(prefix):]
+    return path
+
 
 def ensure_kslist_dir(parent_dir):
     kslist_dir = os.path.join(parent_dir, "_kslist")
@@ -83,6 +123,9 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
     processed_files = []
     file_contents = []
 
+    # ✅ Obtém o prefixo configurado
+    path_prefix = get_path_prefix()
+
     for root, dirs, files in os.walk(dir_path):
         current_depth = root.rstrip(os.sep).count(os.sep) - base_depth
 
@@ -96,11 +139,9 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
         for d in dirs_to_remove:
             dirs.remove(d)
 
-        # Verifica profundidade DEPOIS de limpar diretórios ignorados
         if 0 < max_depth <= current_depth:
-            dirs[:] = []  # Não desce mais níveis
+            dirs[:] = []
 
-        # Processa arquivos do diretório atual
         for file in files:
             file_path = os.path.join(root, file)
 
@@ -137,21 +178,28 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
                 })
 
     with open(output_path, 'w', encoding='utf-8') as outfile:
+        # ✅ Remove o prefixo do path no cabeçalho
+        display_path = remove_path_prefix(dir_path, path_prefix)
+        outfile.write(f"# 📁 {display_path}\n\n")
         outfile.write("# 📋 Índice de Arquivos\n\n")
         outfile.write(f"**Total de arquivos processados:** {len(processed_files)}\n\n")
 
         for idx, file_path in enumerate(processed_files, 1):
-            outfile.write(f"{idx}. `{file_path}`\n")
+            # ✅ Remove o prefixo de cada path
+            display_file_path = remove_path_prefix(file_path, path_prefix)
+            outfile.write(f"{idx}. `{display_file_path}`\n")
 
         outfile.write("\n---\n\n")
         outfile.write("# 📦 Conteúdo dos Arquivos\n\n")
 
         if paths_only:
             for file_path in processed_files:
-                outfile.write(f'{file_path}\n')
+                display_file_path = remove_path_prefix(file_path, path_prefix)
+                outfile.write(f'{display_file_path}\n')
         else:
             for file_data in file_contents:
-                outfile.write(f'## 📄 {file_data["path"]}\n\n')
+                display_file_path = remove_path_prefix(file_data['path'], path_prefix)
+                outfile.write(f'## 📄 {display_file_path}\n\n')
                 outfile.write(f'```{file_data["lang"]}\n')
                 outfile.write(file_data['content'])
                 outfile.write('\n```\n\n')
@@ -160,6 +208,7 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
 def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=False):
     processed_files = []
     file_contents = []
+    path_prefix = get_path_prefix()
 
     for file_path in file_list:
         file_path = file_path.strip()
@@ -203,28 +252,31 @@ def merge_files_from_list(file_list, output_path, base_dir=None, paths_only=Fals
         outfile.write(f"**Total de arquivos processados:** {len(processed_files)}\n\n")
 
         for idx, file_path in enumerate(processed_files, 1):
-            outfile.write(f"{idx}. `{file_path}`\n")
+            display_file_path = remove_path_prefix(file_path, path_prefix)
+            outfile.write(f"{idx}. `{display_file_path}`\n")
 
         outfile.write("\n---\n\n")
         outfile.write("# 📦 Conteúdo dos Arquivos\n\n")
 
         if paths_only:
             for file_path in processed_files:
-                outfile.write(f'{file_path}\n')
-                print(f"✅ Path adicionado: {file_path}")
+                display_file_path = remove_path_prefix(file_path, path_prefix)
+                outfile.write(f'{display_file_path}\n')
+                print(f"✅ Path adicionado: {display_file_path}")
         else:
             for file_data in file_contents:
-                outfile.write(f'## 📄 {file_data["path"]}\n\n')
+                display_file_path = remove_path_prefix(file_data['path'], path_prefix)
+                outfile.write(f'## 📄 {display_file_path}\n\n')
                 outfile.write(f'```{file_data["lang"]}\n')
                 outfile.write(file_data['content'])
                 outfile.write('\n```\n\n')
-                print(f"✅ Conteúdo adicionado: {file_data['path']}")
+                print(f"✅ Conteúdo adicionado: {display_file_path}")
 
 
 def process_root_files(root_dir, kslist_dir, ignore_dirs=None, extensions=None, paths_only=False):
     """
     Processa apenas os arquivos que estão diretamente na raiz do diretório,
-    gerando um arquivo root.md
+    gerando um arquivo root_[nome-do-diretorio].md
     """
     if ignore_dirs is None:
         ignore_dirs = []
@@ -234,8 +286,8 @@ def process_root_files(root_dir, kslist_dir, ignore_dirs=None, extensions=None, 
 
     processed_files = []
     file_contents = []
+    path_prefix = get_path_prefix()
 
-    # Lista apenas os arquivos da raiz (não recursivo)
     try:
         entries = os.listdir(root_dir)
     except Exception as e:
@@ -245,16 +297,13 @@ def process_root_files(root_dir, kslist_dir, ignore_dirs=None, extensions=None, 
     for entry in entries:
         entry_path = os.path.join(root_dir, entry)
 
-        # Ignora diretórios
         if os.path.isdir(entry_path):
             continue
 
-        # Ignora arquivos excluídos
         if is_excluded_file(entry_path):
             print(f"🔒 Arquivo excluído (sensível): {entry_path}")
             continue
 
-        # Filtra por extensão
         if extensions and not any(entry.endswith(ext) for ext in extensions):
             continue
 
@@ -280,35 +329,43 @@ def process_root_files(root_dir, kslist_dir, ignore_dirs=None, extensions=None, 
                 'lang': lang
             })
 
-    # Se não houver arquivos na raiz, não cria o arquivo
+    if len(processed_files) == 1 and os.path.basename(processed_files[0]) == '__init__.py':
+        print("ℹ️ Apenas __init__.py encontrado na raiz. Arquivo root não será gerado.")
+        return
+
     if not processed_files:
         print("ℹ️ Nenhum arquivo encontrado na raiz do diretório.")
         return
 
-    # Gera o arquivo root.md
-    output_path = os.path.join(kslist_dir, "root.md")
+    dir_name = os.path.basename(os.path.normpath(root_dir))
+    output_path = os.path.join(kslist_dir, f"root_{dir_name}.md")
 
     with open(output_path, 'w', encoding='utf-8') as outfile:
+        display_path = remove_path_prefix(root_dir, path_prefix)
+        outfile.write(f"# 📁 {display_path}\n\n")
         outfile.write("# 📋 Índice de Arquivos da Raiz\n\n")
         outfile.write(f"**Total de arquivos processados:** {len(processed_files)}\n\n")
 
         for idx, file_path in enumerate(processed_files, 1):
-            outfile.write(f"{idx}. `{file_path}`\n")
+            display_file_path = remove_path_prefix(file_path, path_prefix)
+            outfile.write(f"{idx}. `{display_file_path}`\n")
 
         outfile.write("\n---\n\n")
         outfile.write("# 📦 Conteúdo dos Arquivos\n\n")
 
         if paths_only:
             for file_path in processed_files:
-                outfile.write(f'{file_path}\n')
+                display_file_path = remove_path_prefix(file_path, path_prefix)
+                outfile.write(f'{display_file_path}\n')
         else:
             for file_data in file_contents:
-                outfile.write(f'## 📄 {file_data["path"]}\n\n')
+                display_file_path = remove_path_prefix(file_data['path'], path_prefix)
+                outfile.write(f'## 📄 {display_file_path}\n\n')
                 outfile.write(f'```{file_data["lang"]}\n')
                 outfile.write(file_data['content'])
                 outfile.write('\n```\n\n')
 
-    print(f"✅ Arquivo root.md gerado: {output_path}")
+    print(f"✅ Arquivo root_{dir_name}.md gerado: {output_path}")
 
 
 def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0, paths_only=False):
@@ -316,11 +373,9 @@ def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0,
     if ignore_dirs is None:
         ignore_dirs = []
 
-    # ✅ NOVO: Processa arquivos da raiz primeiro
     print(f"\n📁 Processando arquivos da raiz de {root_dir}...")
     process_root_files(root_dir, kslist_dir, ignore_dirs, extensions, paths_only)
 
-    # Processa subpastas
     print(f"\n📁 Processando subpastas de {root_dir}...")
     for entry in os.scandir(root_dir):
         if entry.is_dir():
@@ -373,17 +428,14 @@ def extract_directory_levels(file_list):
         if not file_path:
             continue
 
-        # Pega o diretório do arquivo
         dir_path = os.path.dirname(file_path)
 
-        # Adiciona todos os níveis de diretório
         parts = dir_path.split(os.sep)
         for i in range(1, len(parts) + 1):
             level_path = os.sep.join(parts[:i])
             if level_path:
                 directories.add(level_path)
 
-    # Ordena por profundidade (número de separadores)
     sorted_dirs = sorted(directories, key=lambda x: x.count(os.sep))
 
     return sorted_dirs
@@ -432,10 +484,6 @@ def select_output_directory(file_list):
             return None
 
 
-CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".merge_files_configs")
-os.makedirs(CONFIG_DIR, exist_ok=True)
-
-
 def save_config(config_name, config_data):
     config_path = os.path.join(CONFIG_DIR, f"{config_name}.json")
     try:
@@ -463,7 +511,8 @@ def load_config(config_name):
 
 
 def list_configs():
-    configs = [f.replace('.json', '') for f in os.listdir(CONFIG_DIR) if f.endswith('.json')]
+    configs = [f.replace('.json', '') for f in os.listdir(CONFIG_DIR) if
+               f.endswith('.json') and f != 'path_prefix.json']
     return configs
 
 
@@ -507,13 +556,74 @@ def execute_from_config(config_data):
         print("✅ Processo concluído.")
 
 
+def configure_path_prefix():
+    """Menu para configurar o prefixo de path"""
+    current_prefix = get_path_prefix()
+
+    print("\n⚙️ Configuração de Prefixo de Path")
+    print("=" * 50)
+
+    if current_prefix:
+        print(f"📍 Prefixo atual: {current_prefix}")
+    else:
+        print("📍 Nenhum prefixo configurado")
+
+    print("\nOpções:")
+    print("1 - Definir novo prefixo")
+    print("2 - Usar detecção automática")
+    print("3 - Remover prefixo (mostrar paths completos)")
+    print("4 - Voltar")
+
+    choice = input("\nEscolha uma opção: ").strip()
+
+    if choice == '1':
+        new_prefix = input("\nInforme o prefixo a ser removido dos paths (ex: /home/marcelo.gomes/stk-dev/): ").strip()
+        if new_prefix and not new_prefix.endswith(os.sep):
+            new_prefix += os.sep
+        set_path_prefix(new_prefix)
+    elif choice == '2':
+        home = os.path.expanduser("~")
+        print(f"\n🔍 Detectando diretórios comuns em {home}...")
+        common_patterns = ['stk-dev', 'projects', 'workspace', 'dev', 'code', 'work']
+        found = []
+        for pattern in common_patterns:
+            potential_prefix = os.path.join(home, pattern)
+            if os.path.isdir(potential_prefix):
+                found.append(potential_prefix)
+
+        if found:
+            print("\n📁 Diretórios encontrados:")
+            for idx, path in enumerate(found, 1):
+                print(f"{idx} - {path}")
+
+            try:
+                sel = int(input("\nEscolha um diretório (número): ").strip())
+                if 1 <= sel <= len(found):
+                    selected = found[sel - 1] + os.sep
+                    set_path_prefix(selected)
+                else:
+                    print("❌ Opção inválida.")
+            except ValueError:
+                print("❌ Por favor, digite um número válido.")
+        else:
+            print("❌ Nenhum diretório comum encontrado.")
+    elif choice == '3':
+        set_path_prefix('')
+        print("✅ Prefixo removido. Paths completos serão exibidos.")
+
+
 def menu():
     print("=== Merge de arquivos em Markdown ===")
     print("\n🎯 Modo de operação:")
     print("1 - Configurar e executar manualmente")
     print("2 - Usar configuração salva")
     print("3 - Listar configurações salvas")
-    operation_mode = input("Escolha (1, 2 ou 3): ").strip()
+    print("4 - Configurar prefixo de path")  # ✅ NOVA OPÇÃO
+    operation_mode = input("Escolha (1, 2, 3 ou 4): ").strip()
+
+    if operation_mode == '4':
+        configure_path_prefix()
+        return
 
     if operation_mode == '2':
         configs = list_configs()
