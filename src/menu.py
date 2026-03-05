@@ -1,8 +1,9 @@
+import os
+
 from src.config import get_path_prefix, set_path_prefix, list_configs, load_config, save_config
 from src.constants import PRESET_EXTENSIONS
 from src.merge import ensure_kslist_dir, merge_files_from_list, process_subfolders, merge_files_from_directory
 from src.utils import normalize_path
-import os
 
 
 def read_file_list_from_file(list_file_path):

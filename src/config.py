@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 from src.constants import CONFIG_DIR, PATH_PREFIX_CONFIG
 
 
