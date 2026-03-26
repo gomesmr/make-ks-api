@@ -40,7 +40,7 @@ def merge_files_from_directory(dir_path, output_path, ignore_dirs=None, extensio
         for d in dirs_to_remove:
             dirs.remove(d)
 
-        if 0 < max_depth <= current_depth:
+        if 0 < max_depth <= current_depth + 1:
             dirs[:] = []
 
         for file in files:
@@ -270,6 +270,10 @@ def process_subfolders(root_dir, ignore_dirs=None, extensions=None, max_depth=0,
 
     print(f"\n📁 Processando arquivos da raiz de {root_dir}...")
     process_root_files(root_dir, kslist_dir, ignore_dirs, extensions, paths_only)
+
+    if max_depth == 1:
+        print(f"ℹ️ max_depth=1: processando apenas a raiz, subpastas ignoradas.")
+        return
 
     print(f"\n📁 Processando subpastas de {root_dir}...")
     for entry in os.scandir(root_dir):

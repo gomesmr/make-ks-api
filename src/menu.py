@@ -1,6 +1,6 @@
 import os
 
-from src.config import get_path_prefix, set_path_prefix, list_configs, load_config, save_config
+from src.config import get_path_prefix, set_path_prefix, list_configs, load_config, save_config, delete_config
 from src.constants import PRESET_EXTENSIONS
 from src.merge import ensure_kslist_dir, merge_files_from_list, process_subfolders, merge_files_from_directory
 from src.utils import normalize_path
@@ -171,6 +171,51 @@ def configure_path_prefix():
         print("✅ Prefixo removido. Paths completos serão exibidos.")
 
 
+def manage_configs():
+    configs = list_configs()
+    if not configs:
+        print("❌ Nenhuma configuração salva encontrada.")
+        return
+
+    while True:
+        print("\n⚙️ Gerenciar configurações salvas")
+        print("=" * 40)
+        for idx, config in enumerate(configs, 1):
+            print(f"{idx} - {config}")
+        print("\n1 - Deletar uma configuração")
+        print("2 - Voltar")
+
+        while True:
+            action = input("\nEscolha uma opção: ").strip()
+            if action in ('1', '2'):
+                break
+            print("❌ Opção inválida. Digite 1 ou 2.")
+
+        if action == '2':
+            return
+
+        while True:
+            choice = input("Digite o número da configuração a deletar: ").strip()
+            if choice.isdigit():
+                idx = int(choice)
+                if 1 <= idx <= len(configs):
+                    break
+                print(f"❌ Opção inválida. Digite um número entre 1 e {len(configs)}.")
+            else:
+                print("❌ Digite um número válido.")
+
+        config_name = configs[idx - 1]
+        confirm = input(f"Confirma deletar '{config_name}'? (s/n): ").strip().lower()
+        if confirm == 's':
+            if delete_config(config_name):
+                configs = list_configs()
+                if not configs:
+                    print("Nenhuma configuração restante.")
+                    return
+        else:
+            print("❌ Operação cancelada.")
+
+
 def menu():
     print("=== Merge de arquivos em Markdown ===")
     print("\n🎯 Modo de operação:")
@@ -178,15 +223,30 @@ def menu():
     print("2 - Usar configuração salva")
     print("3 - Listar configurações salvas")
     print("4 - Configurar prefixo de path")
-    operation_mode = input("Escolha (1, 2, 3 ou 4) [padrão: 1]: ").strip()
+    print("5 - Gerenciar configurações salvas")
+    print("0 - Sair")
+    while True:
+        operation_mode = input("Escolha (0, 1, 2, 3, 4 ou 5) [padrão: 1]: ").strip()
+        if not operation_mode:
+            operation_mode = '1'
+            print("✅ Usando padrão: Configurar e executar manualmente")
+            break
+        if operation_mode in ('0', '1', '2', '3', '4', '5'):
+            break
+        print("❌ Opção inválida. Digite 0, 1, 2, 3, 4 ou 5.")
 
-    if not operation_mode:
-        operation_mode = '1'
-        print("✅ Usando padrão: Configurar e executar manualmente")
+    if operation_mode == '0':
+        print("👋 Até logo!")
+        return
 
     if operation_mode == '4':
         configure_path_prefix()
         print("✅ Processo concluído.")
+        return
+
+    if operation_mode == '5':
+        manage_configs()
+        menu()
         return
 
     if operation_mode == '2':
@@ -198,14 +258,21 @@ def menu():
         for idx, config in enumerate(configs, 1):
             print(f"{idx} - {config}")
         choice = input("\nEscolha uma configuração (número ou nome): ").strip()
-        try:
-            if choice.isdigit():
-                config_name = configs[int(choice) - 1]
-            else:
-                config_name = choice
-        except (IndexError, ValueError):
-            print("❌ Opção inválida.")
-            return
+        while True:
+            try:
+                if choice.isdigit():
+                    config_idx = int(choice)
+                    if not (1 <= config_idx <= len(configs)):
+                        print(f"❌ Opção inválida. Digite um número entre 1 e {len(configs)}.")
+                        choice = input("\nEscolha uma configuração (número ou nome): ").strip()
+                        continue
+                    config_name = configs[config_idx - 1]
+                else:
+                    config_name = choice
+                break
+            except (IndexError, ValueError):
+                print("❌ Opção inválida.")
+                choice = input("\nEscolha uma configuração (número ou nome): ").strip()
         config_data = load_config(config_name)
         if config_data:
             print(f"\n🚀 Executando configuração '{config_name}'...")
@@ -248,16 +315,24 @@ def menu():
     print("1 - Gerar um único arquivo para o diretório")
     print("2 - Gerar um arquivo para cada subpasta direta")
     print("3 - Gerar arquivo a partir de uma lista específica de arquivos")
-    modo = input("Escolha (1, 2 ou 3) [padrão: 1]: ").strip()
-
-    if not modo:
-        modo = '1'
-        print("✅ Usando padrão: Gerar um único arquivo para o diretório")
+    while True:
+        modo = input("Escolha (1, 2 ou 3) [padrão: 1]: ").strip()
+        if not modo:
+            modo = '1'
+            print("✅ Usando padrão: Gerar um único arquivo para o diretório")
+            break
+        if modo in ('1', '2', '3'):
+            break
+        print("❌ Opção inválida. Digite 1, 2 ou 3.")
 
     print("\nQual formato de saída deseja?")
     print("1 - Apenas paths dos arquivos")
     print("2 - Conteúdo completo dos arquivos (formato atual)")
-    output_format = input("Escolha (1 ou 2): ").strip()
+    while True:
+        output_format = input("Escolha (1 ou 2): ").strip()
+        if output_format in ('1', '2'):
+            break
+        print("❌ Opção inválida. Digite 1 ou 2.")
     paths_only = (output_format == '1')
 
     config_data = {
@@ -333,18 +408,24 @@ def menu():
                 print(f"{idx + 1} - Todas as extensões")
 
         ext_idx = input("Escolha (número) [padrão: 9 - Todas]: ").strip()
-        try:
-            if not ext_idx:
-                ext_idx = len(PRESET_EXTENSIONS)
-                print(f"✅ Usando padrão: Todas as extensões")
-            else:
-                ext_idx = int(ext_idx)
+        while True:
+            try:
+                if not ext_idx:
+                    ext_idx = len(PRESET_EXTENSIONS)
+                    print(f"✅ Usando padrão: Todas as extensões")
+                else:
+                    ext_idx = int(ext_idx)
 
-            ext_idx = ext_idx - 1
-            extensions = PRESET_EXTENSIONS[ext_idx]
-        except (ValueError, IndexError):
-            print("❌ Opção inválida.")
-            return
+                if not (1 <= ext_idx <= len(PRESET_EXTENSIONS)):
+                    print(f"❌ Opção inválida. Digite um número entre 1 e {len(PRESET_EXTENSIONS)}.")
+                    ext_idx = input("Escolha (número) [padrão: 9 - Todas]: ").strip()
+                    continue
+
+                extensions = PRESET_EXTENSIONS[ext_idx - 1]
+                break
+            except (ValueError, IndexError):
+                print(f"❌ Opção inválida. Digite um número entre 1 e {len(PRESET_EXTENSIONS)}.")
+                ext_idx = input("Escolha (número) [padrão: 9 - Todas]: ").strip()
 
         print("\nLimite de profundidade de busca (0 = todos os níveis, 1 = apenas raiz, 2 = raiz + 1 nível, ...):")
         try:

@@ -57,3 +57,17 @@ def list_configs():
     configs = [f.replace('.json', '') for f in os.listdir(CONFIG_DIR) if
                f.endswith('.json') and f != 'path_prefix.json']
     return configs
+
+
+def delete_config(config_name):
+    config_path = os.path.join(CONFIG_DIR, f"{config_name}.json")
+    try:
+        os.remove(config_path)
+        print(f"✅ Configuração '{config_name}' removida.")
+        return True
+    except FileNotFoundError:
+        print(f"❌ Configuração '{config_name}' não encontrada.")
+        return False
+    except Exception as e:
+        print(f"❌ Erro ao remover configuração: {e}")
+        return False
